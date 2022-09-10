@@ -1,0 +1,159 @@
+# Import required libraries
+import pandas as pd
+import dash
+import dash_html_components as html
+import dash_core_components as dcc
+from dash.dependencies import Input, Output
+import plotly.express as px
+
+# Read the airline data into pandas dataframe
+import wget
+spacex_csv_file = wget.download('https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBM-DS0321EN-SkillsNetwork/datasets/spacex_launch_geo.csv')
+spacex_df = pd.read_csv(spacex_csv_file)
+max_payload = spacex_df['Payload Mass (kg)'].max()
+min_payload = spacex_df['Payload Mass (kg)'].min()
+
+min_value = 0
+max_value = 10000
+entered_site = ''
+
+def compute_pieAll():
+    pieAll = px.pie(spacex_df, values='class', names='Launch Site', title='Total Success Launches By Site')
+
+    return pieAll
+
+
+def compute_pieSelectedLaunchsite(entered_site):
+        filtered_spacex_df = filter_spacex_df_for_Launchsite(entered_site)
+
+        classCounts = filtered_spacex_df['class'].value_counts()
+        classCounts_labels = classCounts.index
+
+        pieSelectedLaunchsite = px.pie(classCounts, values='class', names=classCounts_labels)
+
+        return pieSelectedLaunchsite
+
+
+def filter_spacex_df_for_Launchsite(entered_site):
+        launchsite_filter = spacex_df['Launch Site'] == entered_site
+
+        filtered_spacex_df_for_Launchsite = spacex_df[launchsite_filter]
+
+        return filtered_spacex_df_for_Launchsite
+
+
+def compute_scatterAll(min_value, max_value):
+        spacex_df['Booster Version Category'] = spacex_df['Booster Version'].str.split(pat = ' ', expand = True)[1]
+
+        spacex_df_min_max_filter = spacex_df['Payload Mass (kg)'].between(min_value,max_value)
+        spacex_df_min_max_filtered = spacex_df[spacex_df_min_max_filter]
+
+        scatterAll = px.scatter(spacex_df_min_max_filtered, x='Payload Mass (kg)', y='class', color='Booster Version Category', title="Correlation between Payload and Success for all sites")
+        return scatterAll
+
+
+def compute_scatterSelectedLaunchsite(entered_site,min_value, max_value):
+        filtered_spacex_df = filter_spacex_df_for_Launchsite(entered_site)
+
+        spacex_launchsite_df_min_max_filter = filtered_spacex_df['Payload Mass (kg)'].between(min_value,max_value)
+
+        scatterSelectedLaunchsite = filtered_spacex_df[spacex_launchsite_df_min_max_filter]
+
+        scatterSelectedLaunchsite = px.scatter(scatterSelectedLaunchsite, x='Payload Mass (kg)', y='class', color='Booster Version Category', title="Correlation between Payload and Success for all sites")
+
+        return scatterSelectedLaunchsite
+
+
+# Create a dash application
+app = dash.Dash(__name__)
+
+# Create an app layout
+app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
+                                        style={'textAlign': 'center', 'color': '#503D36',
+                                               'font-size': 40}),
+                                # TASK 1: Add a dropdown list to enable Launch Site selection
+                                # The default select value is for ALL sites
+                                # dcc.Dropdown(id='site-dropdown',...)
+                                # launch_sites_unique = spacex_df['Launch Site'].unique()
+                                dcc.Dropdown(id='site-dropdown',
+                                    options = [
+                                    {'label': 'All Sites', 'value': 'ALL'},
+                                    {'label': 'CCAFS LC-40', 'value': 'CCAFS LC-40'},
+                                    {'label': 'CCAFS SLC-40', 'value': 'CCAFS SLC-40'},
+                                    {'label': 'KSC LC-39A', 'value': 'KSC LC-39A'},
+                                    {'label': 'VAFB SLC-4E', 'value': 'VAFB SLC-4E'}
+                                    ],
+                                value ='ALL',
+                                placeholder = "Select a Launch Site here",
+                                searchable = True,
+                                style={'width': "40%"}
+                                ),
+
+                                html.Br(),
+
+                                # TASK 2: Add a pie chart to show the total successful launches count for all sites
+                                # If a specific launch site was selected, show the Success vs. Failed counts for the site
+                                html.Div(dcc.Graph(id='success-pie-chart', figure = {})),
+                                html.Br(),
+
+                                html.P("Payload range (Kg):"),
+                                # TASK 3: Add a slider to select payload range
+                                #dcc.RangeSlider(id='payload-slider',...)
+                                dcc.RangeSlider(
+                                    id='payload-slider',
+                                    min=0, max=10000, step=1000,
+                                    marks={0: '0', 100: '100'},
+                                    value=[min_value, max_value]
+                                ),
+
+                                # TASK 4: Add a scatter chart to show the correlation between payload and launch success
+                                html.Div(dcc.Graph(id='success-payload-scatter-chart', figure = {})),
+                                ])
+
+# TASK 2:
+# Add a callback function for `site-dropdown` as input, `success-pie-chart` as output
+@app.callback(
+        [
+            Output(component_id='success-pie-chart', component_property='figure'),
+            Output(component_id='success-payload-scatter-chart', component_property='figure')
+        ],
+        [
+            Input(component_id='site-dropdown', component_property='value'),
+            Input(component_id='payload-slider', component_property='value')
+        ]
+        )
+# TASK 4:
+# Add a callback function for `site-dropdown` and `payload-slider` as inputs, `success-payload-scatter-chart` as output
+# each input-component-property goes as an argument into the function. here we have only one input in the callback so we also have only one input-argument for the function
+def get_pieChart_and_scatterPlot(entered_site,value):
+
+    min_value = value[0]
+    max_value = value[1]
+
+    print('\nmin_value ',min_value)
+    print('\nmax_value ',max_value)
+
+    print('\nentered_site ',entered_site)
+    print('\n type entered_site ',type(entered_site))
+
+    if entered_site == 'ALL':
+        fig = compute_pieAll()
+
+        fig2 = compute_scatterAll(min_value, max_value)
+
+        # what gets returned from the function gets into the callback-output
+        return [fig, fig2]
+    else:
+        fig = compute_pieSelectedLaunchsite(entered_site)
+
+        fig2 = compute_scatterSelectedLaunchsite(entered_site,min_value,max_value)
+
+        # what gets returned from the function gets into the callback-output.
+        # first return value goes into the first callback output and the 2nd into the 2nd.
+        # We have here only one callback output.
+        return [fig, fig2]
+
+
+# Run the app
+if __name__ == '__main__':
+    app.run_server()
